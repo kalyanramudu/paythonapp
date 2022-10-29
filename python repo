@@ -1,0 +1,67 @@
+pipeline {
+    agent any 
+    environment {
+        //once you sign up for Docker hub, use that user_id here
+        registry = "kalyandocker304/mypythonapp"
+        //- update your credentials ID after creating credentials for connecting to Docker Hub
+        registryCredential = 'dockerhub_id'
+        dockerImage = ''
+        def dockerstop = 'docker ps -f name=mypythonappContainer -q | xargs --no-run-if-empty docker container stop'
+        def dockerkill = 'docker container ls -a -fname=mypythonappContainer -q | xargs -r docker container rm'
+        def dockerRun = 'docker run -p 8096:5000 -d --name mypythonappContainer kalyandocker304/mypythonapp'
+        
+    }
+    
+    stages {
+        stage('Cloning Git') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: '*/master']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/kalyanramudu/mypythonrepo.git']]])
+            }
+        }
+    
+    // Building Docker images
+    stage('Building image') {
+      steps{
+        script {
+          dockerImage = docker.build registry
+        }
+      }
+    }
+    
+     // Uploading Docker images into Docker Hub
+    stage('Upload Image') {
+     steps{    
+         script {
+            docker.withRegistry( '', registryCredential ) {
+            dockerImage.push()
+            }
+        }
+      }
+    }
+    
+    
+    
+    
+    // Running Docker container, make sure port 8096 is opened in 
+    stage('Run Container on Dev Server ') {
+     steps{
+         
+         
+         sshagent(['dev-sever2']) {
+             
+             sh "ssh -o StrictHostKeyChecking=no ubuntu@34.239.103.138 ${dockerstop} ${dockerkill} ${dockerRun} "
+             
+             
+              
+              
+         }
+         
+         sshagent(['dev-sever']) {
+             sh "ssh -o StrictHostKeyChecking=no ubuntu@18.205.106.10 ${dockerstop} ${dockerkill} ${dockerRun}"
+         }
+         
+         
+      }
+    }
+  }
+}
